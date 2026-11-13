@@ -13,6 +13,7 @@ the outage began 12 Nov; B3's pill geometry and caption-bar look).
 Run locally with:  MAKEFUN_OUTPUT_DIR=out python3 main.py
 """
 import base64
+import hashlib
 import os
 from pathlib import Path
 
@@ -40,6 +41,21 @@ def jpeg_dimensions(data):
     return None
 
 
+def write_atomic(path, data):
+    """Write bytes atomically and verify them afterwards.
+
+    A failed run must never leave a partial entry file behind, so the
+    bytes go to a temp file first, are read back and compared, and only
+    then renamed into place. Returns the sha256 of the written bytes.
+    """
+    tmp = path.with_name("." + path.name + ".tmp")
+    tmp.write_bytes(data)
+    back = tmp.read_bytes()
+    assert back == data, f"verify after write failed for {path.name}"
+    os.replace(tmp, path)
+    return hashlib.sha256(back).hexdigest()
+
+
 def main():
     raw = (HERE / "entry.b64").read_text().strip()
     assert "\n" not in raw, "entry.b64 must be a single line"
@@ -50,7 +66,8 @@ def main():
     dims = jpeg_dimensions(data)
     assert dims == (1024, 1024), f"expected 1024x1024, got {dims}"
     OUT.mkdir(parents=True, exist_ok=True)
-    (OUT / "entry.png").write_bytes(data)
+    digest = write_atomic(OUT / "entry.png", data)
+    print(f"entry.png: {len(data)} bytes, {dims[0]}x{dims[1]}, sha256 {digest}")
 
 
 if __name__ == "__main__":
